@@ -142,8 +142,9 @@ class App:
                         variable=self.v_cap_click).grid(row=5, column=1, sticky="w", padx=6)
         ttk.Button(f, text="캡처 시작", style="Big.TButton", command=self.start_capture).grid(
             row=6, column=1, sticky="w", padx=6, pady=(10, 0))
-        ttk.Label(f, text="시작하면 이 창이 작아지고 5초 뒤 시작합니다. 그 사이 책 화면을 한 번 클릭하세요. "
-                          "멈추려면 Esc. 화면이 더 안 바뀌면 자동으로 끝납니다.",
+        ttk.Label(f, text="시작하면 이 창이 작아지고 화면 구석에 진행 표시창이 뜹니다. 5초 안에 책 화면을 한 번 클릭하세요. "
+                          "그다음은 프로그램이 페이지를 넘기며 찍고, 마지막 페이지에서 저절로 끝납니다(중간에 멈추기: Esc). "
+                          "페이지가 안 넘어가면 넘김 키를 '직접 넘기기'로 바꾸세요. 그러면 내가 넘길 때마다 자동으로 찍습니다.",
                   foreground="#666", wraplength=740).grid(row=7, column=0, columnspan=3, sticky="w", pady=(8, 0))
         f.columnconfigure(1, weight=1)
         return f
@@ -190,10 +191,18 @@ class App:
         click = ((x0 + x1) // 2, y0 + 8) if self.v_cap_click.get() else None
         vk = CAP.KEYS[self.v_cap_key.get()]
         self.root.iconify()
+        status = StatusBox(self.root, self.region)
+
+        def log(m):
+            self.log(m)
+            status.set(m)
 
         def job():
-            n = CAP.run_capture(self.region, out, vk, max_pages=mx, delay=delay, start_no=start_no,
-                                focus_click=click, log=self.log, stop=lambda: self.stop_flag, countdown=5)
+            try:
+                n = CAP.run_capture(self.region, out, vk, max_pages=mx, delay=delay, start_no=start_no,
+                                    focus_click=click, log=log, stop=lambda: self.stop_flag, countdown=5)
+            finally:
+                status.close()
             self.log(f"캡처 끝: {n}장 → {out}")
             self.root.after(0, self.root.deiconify)
             self.root.after(0, lambda: (self.v_src.set(out), self._default_out(), self.nb.select(1)))
@@ -417,6 +426,52 @@ class App:
             self.root.destroy()
 
 
+class StatusBox:
+    """캡처하는 동안 화면 구석에 떠 있는 작은 진행 표시창 (캡처 영역과 겹치지 않는 쪽에)."""
+
+    def __init__(self, root, region):
+        self.root = root
+        top = self.top = tk.Toplevel(root)
+        top.overrideredirect(True)
+        top.attributes("-topmost", True)
+        try:
+            top.attributes("-alpha", 0.9)
+        except Exception:
+            pass
+        frm = tk.Frame(top, bg="#1f2937", padx=14, pady=10)
+        frm.pack()
+        tk.Label(frm, text="책 캡처 중", bg="#1f2937", fg="#9ca3af", font=("Malgun Gothic", 9)).pack(anchor="w")
+        self.var = tk.StringVar(value="준비 중...")
+        tk.Label(frm, textvariable=self.var, bg="#1f2937", fg="white", font=("Malgun Gothic", 11, "bold"),
+                 wraplength=360, justify="left").pack(anchor="w")
+        tk.Button(frm, text="중지", command=self._stop, takefocus=0).pack(anchor="e", pady=(6, 0))
+        top.update_idletasks()
+        w, h = 400, top.winfo_reqheight()
+        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+        x0, y0, x1, y1 = region
+        # 영역 오른쪽·왼쪽·아래 중 빈 곳, 없으면 화면 오른쪽 아래
+        if sw - x1 >= w + 10:
+            x, y = x1 + 10, max(0, y0)
+        elif x0 >= w + 10:
+            x, y = x0 - w - 10, max(0, y0)
+        elif sh - y1 >= h + 10:
+            x, y = max(0, x0), y1 + 10
+        else:
+            x, y = sw - w - 10, sh - h - 60
+        top.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _stop(self):
+        app = getattr(self.root, "_app", None)
+        if app:
+            app.stop()
+
+    def set(self, text):
+        self.root.after(0, lambda: self.var.set(text))
+
+    def close(self):
+        self.root.after(0, self.top.destroy)
+
+
 def friendly(e):
     name = type(e).__name__
     if name == "AuthenticationError":
@@ -435,7 +490,7 @@ def friendly(e):
 def main():
     CAP.make_dpi_aware()
     root = tk.Tk()
-    App(root)
+    root._app = App(root)
     root.mainloop()
 
 

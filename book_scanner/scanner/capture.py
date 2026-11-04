@@ -13,12 +13,14 @@ from PIL import ImageChops, ImageGrab, ImageStat
 IS_WIN = sys.platform.startswith("win")
 
 # 가상 키 코드
+MANUAL = "직접 넘기기 (내가 넘기면 자동으로 찍음)"
 KEYS = {
     "→ (오른쪽 화살표)": 0x27,
     "Page Down": 0x22,
     "스페이스": 0x20,
     "← (왼쪽 화살표, 오른쪽→왼쪽 책)": 0x25,
     "↓ (아래 화살표)": 0x28,
+    MANUAL: None,
 }
 VK_ESCAPE = 0x1B
 
@@ -76,6 +78,19 @@ def diff(a, b):
     return sum(ImageStat.Stat(d).mean) / 3
 
 
+def _wait_manual(region, prev, stop):
+    """사용자가 페이지를 넘길 때까지 기다렸다가, 화면이 멈추면 새 화면을 돌려준다. 중지하면 None."""
+    while True:
+        if stop() or esc_pressed():
+            return None
+        time.sleep(0.3)
+        cur = grab(region)
+        if diff(cur, prev) > 0.5:
+            new, _ = wait_stable(region, 10, prev)
+            time.sleep(0.5)
+            return grab(region)
+
+
 def wait_stable(region, timeout, prev_shot):
     """페이지 넘김 뒤 화면이 바뀌고 멈출 때까지 기다린다. (새 화면, 바뀌었는지)"""
     t0 = time.time()
@@ -92,12 +107,23 @@ def wait_stable(region, timeout, prev_shot):
     return last, changed
 
 
+def beep():
+    if IS_WIN:
+        try:
+            import winsound
+            winsound.MessageBeep(winsound.MB_OK)
+        except Exception:
+            pass
+
+
 def run_capture(region, out_dir, key_vk, max_pages=500, delay=1.5, start_no=1, focus_click=None,
                 log=print, stop=lambda: False, countdown=3):
-    """영역을 반복 캡처해 out_dir/page_0001.png ... 로 저장. 저장한 장 수를 돌려준다."""
+    """영역을 반복 캡처해 out_dir/page_0001.png ... 로 저장. 저장한 장 수를 돌려준다.
+    key_vk 가 None 이면 직접 넘기기: 사용자가 페이지를 넘겨 화면이 바뀌고 멈추면 찍는다."""
     os.makedirs(out_dir, exist_ok=True)
+    manual = key_vk is None
     for s in range(countdown, 0, -1):
-        log(f"{s}초 뒤 시작합니다. 책 화면이 맨 앞(첫 페이지)에 보이게 해 두세요. 멈추려면 Esc.")
+        log(f"{s}초 뒤 시작. 지금 책 화면을 한 번 클릭해 두세요. (멈추기: Esc)")
         time.sleep(1)
     if focus_click:
         click_at(*focus_click)          # 책 창에 키 입력이 가도록 한 번 클릭
@@ -107,13 +133,22 @@ def run_capture(region, out_dir, key_vk, max_pages=500, delay=1.5, start_no=1, f
     no = start_no
     while n < max_pages:
         if stop() or esc_pressed():
-            log("중지했습니다.")
+            log(f"중지했습니다. 모두 {n}장 저장.")
             break
         path = os.path.join(out_dir, f"page_{no:04d}.png")
         shot.save(path)
         n += 1
         no += 1
-        log(f"저장 {os.path.basename(path)}")
+        beep()
+        if manual:
+            log(f"{n}장째 저장했습니다. 다음 페이지로 넘기세요. (끝내기: Esc)")
+            new = _wait_manual(region, shot, stop)
+            if new is None:
+                log(f"중지했습니다. 모두 {n}장 저장.")
+                break
+            shot = new
+            continue
+        log(f"{n}장째 저장 → 다음 페이지로 넘기는 중... (멈추기: Esc)")
         press_key(key_vk)
         wait_stable(region, delay + 4, shot)    # 화면이 바뀌고 잠잠해질 때까지
         time.sleep(delay)                       # 그림 로딩 여유
@@ -123,7 +158,11 @@ def run_capture(region, out_dir, key_vk, max_pages=500, delay=1.5, start_no=1, f
             time.sleep(delay + 1.5)
             new = grab(region)
             if diff(new, shot) < 0.5:
-                log("화면이 더 이상 바뀌지 않아 마지막 페이지로 보고 끝냈습니다.")
+                if n == 1:
+                    log("페이지가 넘어가지 않았습니다. 책 화면을 클릭해 두었는지 확인하거나, "
+                        "다른 넘김 키나 '직접 넘기기'로 해 보세요.")
+                else:
+                    log(f"화면이 더 이상 바뀌지 않아 마지막 페이지로 보고 끝냈습니다. 모두 {n}장 저장.")
                 break
         shot = new
     return n
