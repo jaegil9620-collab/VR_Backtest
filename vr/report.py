@@ -13,7 +13,7 @@ CYCLE_COLS_KO = {
 }
 
 
-def save(res, summary, cfg, out_dir, bench=None, name="run"):
+def save(res, summary, cfg, out_dir, bench=None, name="run", curves=None):
     os.makedirs(out_dir, exist_ok=True)
     base = os.path.join(out_dir, name)
     res["cycles"].rename(columns=CYCLE_COLS_KO).to_csv(f"{base}_cycles.csv", index=False, encoding="utf-8-sig")
@@ -46,30 +46,8 @@ def save(res, summary, cfg, out_dir, bench=None, name="run"):
     with open(f"{base}_summary.json", "w", encoding="utf-8") as fh:
         json.dump({"summary": summary, "benchmarks": bench or {}}, fh, ensure_ascii=False, indent=2, default=str)
     if cfg["report"].get("html", True):
-        _html(res, f"{base}_chart.html", cfg)
+        from .html_report import build
+        build(res, summary, cfg, bench or {}, curves or {}, f"{base}_report.html")
     return base
 
 
-def _html(res, path, cfg):
-    try:
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
-    except ImportError:
-        return
-    d = res["daily"]
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.72, 0.28],
-                        vertical_spacing=0.04, subplot_titles=("평가금 · V · 밴드 · Pool", "계좌총액 낙폭"))
-    fig.add_trace(go.Scatter(x=d.index, y=d["eval"], name="평가금", line=dict(color="#d62728")), 1, 1)
-    fig.add_trace(go.Scatter(x=d.index, y=d["V"], name="V", line=dict(color="#ff7f0e", shape="hv")), 1, 1)
-    fig.add_trace(go.Scatter(x=d.index, y=d["max_band"], name="최대밴드",
-                             line=dict(color="#2ca02c", dash="dot", shape="hv")), 1, 1)
-    fig.add_trace(go.Scatter(x=d.index, y=d["min_band"], name="최소밴드",
-                             line=dict(color="#2ca02c", dash="dot", shape="hv")), 1, 1)
-    fig.add_trace(go.Scatter(x=d.index, y=d["pool"], name="Pool", line=dict(color="#1f77b4")), 1, 1)
-    dd = d["total"] / d["total"].cummax() - 1
-    fig.add_trace(go.Scatter(x=d.index, y=dd * 100, name="낙폭(%)", fill="tozeroy",
-                             line=dict(color="#7f7f7f")), 2, 1)
-    s = cfg["strategy"]
-    fig.update_layout(title=f"{cfg['data']['ticker']} VR ({s['mode']}, G={s['G']}, 밴드 -{s['band_low']:.0%}/+{s['band_high']:.0%}, 사용한도 {s['pool_limit']:.0%})",
-                      height=760, hovermode="x unified", template="plotly_white")
-    fig.write_html(path, include_plotlyjs=True)

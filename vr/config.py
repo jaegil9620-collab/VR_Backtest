@@ -75,9 +75,7 @@ def resolve(cfg):
     def fill(d, key, preset_key, label):
         if d.get(key) is None:
             d[key] = p[preset_key]
-            source[label] = "책 기본값"
-        else:
-            source[label] = "사용자 설정"
+        source[label] = "책 기본값" if d[key] == p[preset_key] else "사용자 설정"
 
     for key in ("G", "band_low", "band_high", "pool_limit"):
         fill(s, key, key, f"strategy.{key}")
@@ -92,7 +90,9 @@ def resolve(cfg):
     else:
         if per.get("type") is None:
             per["type"] = "ratio" if per.get("ratio") is not None else "fixed"
-        source["capital.periodic"] = "사용자 설정"
+        same = (per["type"] == p["periodic_type"] and
+                (per.get("amount") == p["periodic_amount"] if per["type"] == "fixed" else per.get("ratio") == p["periodic_ratio"]))
+        source["capital.periodic"] = "책 기본값" if same else "사용자 설정"
 
     broker = BROKER_PRESETS.get(k["broker"], BROKER_PRESETS["none"])
     for key, val in broker.items():

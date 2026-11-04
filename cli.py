@@ -14,9 +14,8 @@ import yaml
 
 from vr import config as C
 from vr import data as D
-from vr import metrics as M
 from vr import report as R
-from vr.engine import backtest
+from vr.runner import run
 
 
 def _parse_val(v):
@@ -32,35 +31,11 @@ def _overrides(pairs):
 
 
 def run_once(cfg, name="run", save=True, quiet=False):
-    dcfg = cfg["data"]
-    prices = D.get_prices(dcfg)
-    ref, body = D.slice_period(prices, dcfg["start"], dcfg["end"])
-    scale = 1.0
-    if dcfg.get("rescale", "auto") == "auto":
-        ref, body, scale = D.rescale(ref, body)
-    px = pd.concat([ref, body])
-    if cfg["fill"]["price_model"] == "close":
-        # 종가 기준(책 백테스트 방식 추정): 장중 고저가를 무시하고 종가에서만 체결 판정
-        px = px.assign(Open=px["Close"], High=px["Close"], Low=px["Close"])
-    events = None
-    if cfg["capital"].get("events_csv"):
-        events = pd.read_csv(cfg["capital"]["events_csv"])
-    res = backtest(px, cfg, events)
-    summary = M.summarize(res)
-    if scale != 1.0:
-        summary["가격 배율(분할 보정)"] = round(scale, 4)
-    bench = {}
-    for t in cfg["report"].get("benchmarks") or []:
-        try:
-            bp = px if t == dcfg["ticker"] else D.get_prices(dcfg, t)
-            bp = bp[(bp.index >= res["ref_date"]) & (bp.index <= px.index[-1])]
-            bench[t], _ = M.buy_and_hold(bp, res["flows"], res["ref_date"])
-        except Exception as e:  # 벤치마크 실패는 본 결과에 영향 없음
-            bench[t] = {"오류": str(e)}
+    res, summary, bench, curves = run(cfg, log=(lambda m: None) if quiet else print)
     if save:
-        base = R.save(res, summary, cfg, cfg["report"]["out_dir"], bench, name)
+        base = R.save(res, summary, cfg, cfg["report"]["out_dir"], bench, name, curves)
         if not quiet:
-            print(f"결과 저장: {base}_*.csv / _summary.md / _chart.html")
+            print(f"결과 저장: {base}_report.html (+ csv)")
     if not quiet:
         for k, v in summary.items():
             print(f"  {k}: {v}")

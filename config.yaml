@@ -64,5 +64,5 @@ fill:
 
 report:
   out_dir: results
-  benchmarks: [TQQQ, QQQ, QLD]   # 같은 입출금 일정으로 단순 보유 비교
+  benchmarks: [QQQ, SPY, TQQQ]   # 같은 입출금 일정으로 단순 보유 비교
   html: true

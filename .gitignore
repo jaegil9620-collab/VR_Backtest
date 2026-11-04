@@ -4,3 +4,8 @@ __pycache__/
 results/
 data/*.csv
 !data/events_example.csv
+build/
+dist/
+*.spec
+VR_Backtest.exe
+gui_settings.json
