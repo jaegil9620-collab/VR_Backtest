@@ -22,6 +22,8 @@ KEYS = {
     "↓ (아래 화살표)": 0x28,
     MANUAL: None,
 }
+CLICK = "마우스 클릭 (뷰어의 '다음' 버튼 위치 지정)"
+KEYS = {CLICK: "click", **KEYS}
 VK_ESCAPE = 0x1B
 
 
@@ -41,21 +43,35 @@ def make_dpi_aware():
 def press_key(vk):
     if not IS_WIN:
         raise RuntimeError("자동 페이지 넘김은 Windows 에서만 됩니다.")
+    if isinstance(vk, tuple):                   # ("click", x, y): 다음 버튼 클릭
+        click_at(vk[1], vk[2], restore=True)
+        return
     u = ctypes.windll.user32
     ext = 0x0001 if vk in (0x21, 0x22, 0x25, 0x26, 0x27, 0x28) else 0  # 화살표·PageUp/Down 은 확장 키
-    u.keybd_event(vk, 0, ext, 0)
+    scan = u.MapVirtualKeyW(vk, 0)              # 웹 뷰어는 스캔 코드(event.code)로 키를 구분하는 경우가 많다
+    u.keybd_event(vk, scan, ext, 0)
     time.sleep(0.05)
-    u.keybd_event(vk, 0, ext | 0x0002, 0)
+    u.keybd_event(vk, scan, ext | 0x0002, 0)
 
 
-def click_at(x, y):
+class _POINT(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+def click_at(x, y, restore=False):
     if not IS_WIN:
         return
     u = ctypes.windll.user32
+    old = _POINT()
+    u.GetCursorPos(ctypes.byref(old))
     u.SetCursorPos(int(x), int(y))
     time.sleep(0.05)
     u.mouse_event(0x0002, 0, 0, 0, 0)
+    time.sleep(0.03)
     u.mouse_event(0x0004, 0, 0, 0, 0)
+    if restore:                                 # 마우스를 원래 자리로 (버튼 강조가 찍히지 않게)
+        time.sleep(0.05)
+        u.SetCursorPos(old.x, old.y)
 
 
 def esc_pressed():
@@ -160,7 +176,7 @@ def run_capture(region, out_dir, key_vk, max_pages=500, delay=1.5, start_no=1, f
             if diff(new, shot) < 0.5:
                 if n == 1:
                     log("페이지가 넘어가지 않았습니다. 책 화면을 클릭해 두었는지 확인하거나, "
-                        "다른 넘김 키나 '직접 넘기기'로 해 보세요.")
+                        "넘김 방식을 '마우스 클릭'이나 '직접 넘기기'로 바꿔 보세요.")
                 else:
                     log(f"화면이 더 이상 바뀌지 않아 마지막 페이지로 보고 끝냈습니다. 모두 {n}장 저장.")
                 break
@@ -171,9 +187,10 @@ def run_capture(region, out_dir, key_vk, max_pages=500, delay=1.5, start_no=1, f
 class RegionPicker:
     """반투명 전체화면 창에서 마우스로 끌어 영역을 고른다. callback((x0,y0,x1,y1) 또는 None)."""
 
-    def __init__(self, root, callback):
+    def __init__(self, root, callback, point=False):
         import tkinter as tk
         self.cb = callback
+        self.point = point
         top = self.top = tk.Toplevel(root)
         # 여러 모니터 전체를 덮는다
         vx, vy, vw, vh = _virtual_screen(root)
@@ -185,7 +202,8 @@ class RegionPicker:
         c = self.c = tk.Canvas(top, bg="black", highlightthickness=0, cursor="crosshair")
         c.pack(fill="both", expand=True)
         c.create_text(root.winfo_screenwidth() // 2 - vx, 40, fill="white", font=("Malgun Gothic", 18, "bold"),
-                      text="책 페이지 영역을 마우스로 끌어서 고르세요  (취소: Esc)")
+                      text=("뷰어의 '다음 페이지' 버튼(또는 누르면 넘어가는 곳)을 클릭하세요  (취소: Esc)" if point else
+                            "책 페이지 영역을 마우스로 끌어서 고르세요  (취소: Esc)"))
         self.rect = None
         self.start = None
         c.bind("<ButtonPress-1>", self.down)
@@ -204,6 +222,9 @@ class RegionPicker:
 
     def up(self, e):
         if not self.start:
+            return
+        if self.point:
+            self.done((e.x + self.ox, e.y + self.oy))
             return
         x0, y0 = self.start
         x0, x1 = sorted((x0, e.x))

@@ -22,7 +22,7 @@ SETTINGS = os.path.join(BASE, "settings.json")
 DEFAULTS = {
     "api_key": "", "model": "Opus 5.5 (가장 정확)", "ocr_effort": "low", "summary_effort": "high",
     "cap_dir": os.path.join(BASE, "captures", "새 책"), "cap_key": "→ (오른쪽 화살표)", "cap_delay": "1.5",
-    "cap_max": "400", "cap_region": None, "cap_click": False,
+    "cap_max": "400", "cap_region": None, "cap_click": False, "cap_point": None,
     "src": "", "out": "", "split": "자동 (가로로 긴 펼침면이면 반으로)", "level": "장(##) 단위로 파일 나누기",
     "focus": "",
 }
@@ -116,6 +116,7 @@ class App:
         self.v_cap_max = tk.StringVar(value=self.s["cap_max"])
         self.v_cap_click = tk.BooleanVar(value=self.s["cap_click"])
         self.region = tuple(self.s["cap_region"]) if self.s["cap_region"] else None
+        self.point = tuple(self.s["cap_point"]) if self.s.get("cap_point") else None
         self.v_region = tk.StringVar(value=self._region_text())
 
         ttk.Label(f, text="브라우저·전자책 뷰어에 책을 띄워 두고, 페이지 영역을 고른 뒤 시작하면 "
@@ -128,9 +129,16 @@ class App:
         rb = ttk.Frame(f)
         rb.grid(row=2, column=2, sticky="e")
         ttk.Button(rb, text="영역 고르기", command=self.pick_region).pack(side="left")
-        ttk.Label(f, text="다음 페이지 키").grid(row=3, column=0, sticky="w", pady=4)
-        ttk.Combobox(f, textvariable=self.v_cap_key, values=list(CAP.KEYS), state="readonly",
-                     width=30).grid(row=3, column=1, sticky="w", padx=6)
+        ttk.Label(f, text="페이지 넘기기").grid(row=3, column=0, sticky="w", pady=4)
+        kr = ttk.Frame(f)
+        kr.grid(row=3, column=1, columnspan=2, sticky="w", padx=6)
+        ttk.Combobox(kr, textvariable=self.v_cap_key, values=list(CAP.KEYS), state="readonly",
+                     width=38).pack(side="left")
+        self.v_point = tk.StringVar(value=self._point_text())
+        self.btn_point = ttk.Button(kr, text="클릭 위치 고르기", command=self.pick_point)
+        self.lbl_point = ttk.Label(kr, textvariable=self.v_point)
+        self.v_cap_key.trace_add("write", lambda *a: self._show_point())
+        self._show_point()
         row = ttk.Frame(f)
         row.grid(row=4, column=1, sticky="w", padx=6, pady=4)
         ttk.Label(f, text="넘김 후 대기").grid(row=4, column=0, sticky="w")
@@ -144,7 +152,7 @@ class App:
             row=6, column=1, sticky="w", padx=6, pady=(10, 0))
         ttk.Label(f, text="시작하면 이 창이 작아지고 화면 구석에 진행 표시창이 뜹니다. 5초 안에 책 화면을 한 번 클릭하세요. "
                           "그다음은 프로그램이 페이지를 넘기며 찍고, 마지막 페이지에서 저절로 끝납니다(중간에 멈추기: Esc). "
-                          "페이지가 안 넘어가면 넘김 키를 '직접 넘기기'로 바꾸세요. 그러면 내가 넘길 때마다 자동으로 찍습니다.",
+                          "키로 안 넘어가면 '마우스 클릭'(뷰어의 다음 버튼을 대신 눌러 줌)이나 '직접 넘기기'(내가 넘길 때마다 찍음)를 고르세요.",
                   foreground="#666", wraplength=740).grid(row=7, column=0, columnspan=3, sticky="w", pady=(8, 0))
         f.columnconfigure(1, weight=1)
         return f
@@ -154,6 +162,29 @@ class App:
             return "(아직 안 고름)"
         x0, y0, x1, y1 = self.region
         return f"{x1 - x0} × {y1 - y0} 픽셀  (위치 {x0}, {y0})"
+
+    def _point_text(self):
+        return f"({self.point[0]}, {self.point[1]})" if self.point else "(아직 안 고름)"
+
+    def _show_point(self):
+        if CAP.KEYS.get(self.v_cap_key.get()) == "click":
+            self.btn_point.pack(side="left", padx=6)
+            self.lbl_point.pack(side="left")
+        else:
+            self.btn_point.pack_forget()
+            self.lbl_point.pack_forget()
+
+    def pick_point(self):
+        self.root.iconify()
+
+        def done(pt):
+            self.root.deiconify()
+            if pt:
+                self.point = pt
+                self.v_point.set(self._point_text())
+                self.save(quiet=True)
+
+        self.root.after(400, lambda: CAP.RegionPicker(self.root, done, point=True))
 
     def pick_region(self):
         self.root.iconify()
@@ -190,6 +221,11 @@ class App:
         x0, y0, x1, _ = self.region
         click = ((x0 + x1) // 2, y0 + 8) if self.v_cap_click.get() else None
         vk = CAP.KEYS[self.v_cap_key.get()]
+        if vk == "click":
+            if not self.point:
+                messagebox.showinfo("캡처", "[클릭 위치 고르기]로 뷰어의 '다음' 버튼 위치를 먼저 고르세요.")
+                return
+            vk = ("click", *self.point)
         self.root.iconify()
         status = StatusBox(self.root, self.region)
 
@@ -411,6 +447,7 @@ class App:
             "api_key": self.v_key.get().strip(), "model": self.v_model.get(),
             "cap_dir": self.v_cap_dir.get(), "cap_key": self.v_cap_key.get(), "cap_delay": self.v_cap_delay.get(),
             "cap_max": self.v_cap_max.get(), "cap_region": list(self.region) if self.region else None,
+            "cap_point": list(self.point) if self.point else None,
             "cap_click": self.v_cap_click.get(), "src": self.v_src.get(), "out": self.v_out.get(),
             "split": self.v_split.get(), "level": self.v_level.get(), "focus": self.v_focus.get(),
         })
@@ -459,6 +496,7 @@ class StatusBox:
         else:
             x, y = sw - w - 10, sh - h - 60
         top.geometry(f"{w}x{h}+{x}+{y}")
+        _no_activate(top)
 
     def _stop(self):
         app = getattr(self.root, "_app", None)
@@ -470,6 +508,21 @@ class StatusBox:
 
     def close(self):
         self.root.after(0, self.top.destroy)
+
+
+def _no_activate(win):
+    """표시창이 키보드 입력을 가로채지 않도록 (Windows)."""
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        import ctypes
+        win.update_idletasks()
+        hwnd = ctypes.windll.user32.GetParent(win.winfo_id()) or win.winfo_id()
+        GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW = -20, 0x08000000, 0x00000080
+        st = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, st | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW)
+    except Exception:
+        pass
 
 
 def friendly(e):
