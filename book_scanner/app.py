@@ -55,7 +55,6 @@ class App:
         self.busy = False
         self.usage = CL.Usage()
         root.title("책 스캔 · 요약")
-        root.geometry("820x720")
         style = ttk.Style()
         try:
             style.theme_use("vista" if sys.platform.startswith("win") else "clam")
@@ -92,10 +91,21 @@ class App:
         self.v_usage = tk.StringVar(value=self.usage.text())
         ttk.Label(bar, textvariable=self.v_usage, foreground="#555").pack(side="left")
         ttk.Button(bar, text="중지", command=self.stop).pack(side="right")
-        self.log_box = tk.Text(bottom, height=12, font=("Consolas", 9), wrap="word")
+        self.log_box = tk.Text(bottom, height=8, font=("Consolas", 9), wrap="word")
         self.log_box.pack(fill="both", expand=True, pady=(4, 0))
         self.log("준비됐습니다. ① 화면 캡처로 책을 찍거나, 이미 있는 스캔 파일이면 ② 로 바로 가세요.")
         root.protocol("WM_DELETE_WINDOW", self.close)
+        self._fit_window()
+
+    def _fit_window(self):
+        """화면 배율(125%·150%)에 상관없이 버튼이 다 보이도록 필요한 크기로 창을 연다."""
+        self.root.update_idletasks()
+        w = max(self.root.winfo_reqwidth(), int(self.root.winfo_fpixels("8.5i")))
+        h = self.root.winfo_reqheight()
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        w, h = min(w, int(sw * 0.95)), min(h, int(sh * 0.9))
+        self.root.geometry(f"{w}x{h}+{max(0, (sw - w) // 2)}+{max(0, (sh - h) // 3)}")
+        self.root.minsize(min(w, 600), min(h, 500))
 
     # ------------------------------------------------------------ 탭 ①
     def _tab_capture(self, nb):
@@ -115,7 +125,9 @@ class App:
         ttk.Button(f, text="찾기", command=lambda: self._pick_dir(self.v_cap_dir)).grid(row=1, column=2)
         ttk.Label(f, text="캡처 영역").grid(row=2, column=0, sticky="w", pady=4)
         ttk.Label(f, textvariable=self.v_region).grid(row=2, column=1, sticky="w", padx=6)
-        ttk.Button(f, text="영역 고르기", command=self.pick_region).grid(row=2, column=2)
+        rb = ttk.Frame(f)
+        rb.grid(row=2, column=2, sticky="e")
+        ttk.Button(rb, text="영역 고르기", command=self.pick_region).pack(side="left")
         ttk.Label(f, text="다음 페이지 키").grid(row=3, column=0, sticky="w", pady=4)
         ttk.Combobox(f, textvariable=self.v_cap_key, values=list(CAP.KEYS), state="readonly",
                      width=30).grid(row=3, column=1, sticky="w", padx=6)
