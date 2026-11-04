@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+results/
+data/*.csv
+!data/events_example.csv

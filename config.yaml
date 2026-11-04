@@ -1,0 +1,68 @@
+# 라오어 VR 백테스트 설정
+# 값을 null 로 두면 mode 에 맞는 책 기본값(적립/거치/인출)이 자동으로 들어갑니다.
+# 값을 적으면 그 값이 책 기본값보다 우선합니다.
+
+data:
+  ticker: TQQQ            # 백테스트 종목 (SOXL, UPRO, QLD, QQQ ...)
+  source: yfinance        # yfinance | csv
+  csv_path: null          # source: csv 일 때 파일 경로 (Date,Open,High,Low,Close 열)
+  cache_dir: data         # 받은 데이터 저장 폴더
+  refresh: false          # true 면 매번 새로 받음
+  rescale: auto           # auto: 시작가가 $10 미만(분할 반영으로 작아진 가격)이면 $100 기준으로 키움 | off
+  start: 2011-01-01
+  end: 2020-12-31
+  synthetic:              # 상장 전 구간(닷컴버블 등)을 기초지수로 흉내 낼 때
+    enabled: false
+    base_ticker: QQQ      # QQQ(1999~) 또는 ^NDX(1985~)
+    leverage: 3
+    expense_ratio: 0.0095 # 연 보수
+    financing_rate: 0.0   # 연 차입금리 (레버리지 비용, 예: 0.02)
+
+strategy:
+  mode: hold              # accumulate(적립식) | hold(거치식) | withdraw(인출식)
+  formula: basic          # basic(기본공식) | skill(실력공식)
+  G: null                 # 책: 적립 10 / 거치 10 / 인출 20
+  G_schedule: null        # 예: [{start: 2015-01-01, G: 15}, {start: 2018-01-01, G: 20}]
+  band_low: null          # 책: 0.15 → 최소밴드 = V x 0.85
+  band_high: null         # 책: 0.15 → 최대밴드 = V x 1.15
+  pool_limit: null        # 책: 적립 0.75 / 거치 0.50 / 인출 0.25
+  pool_limit_rule: nearest  # nearest(책과 동일, 한도에 가장 가까운 개수) | floor(한도 절대 초과 안 함)
+  cycle_mode: trading_days  # trading_days(N거래일) | calendar(월~다음주 금 2주)
+  cycle_length: 10
+  lot_size: 1             # 주문 1칸당 주식 수 (큰 계좌는 2~30)
+  round_digits: 2         # 책: 소수 둘째 자리
+
+capital:
+  initial: 20000          # 초기 투자금($)
+  initial_pool_ratio: null  # 책: 적립 0 / 거치 0.10 / 인출 0.20
+  periodic:               # 사이클마다 적립(+)/인출(-). 모두 null 이면 책 기본값
+    type: null            # fixed(고정 $) | ratio(비율)
+    amount: null          # fixed: 예 250(적립), -500(인출)
+    ratio: null           # ratio: 예 -0.005 (인출 0.5%)
+    ratio_base: initial   # initial(최초 투자금 기준) | total(현재 계좌총액 기준)
+  withdraw_shortfall: sell  # 인출금 > Pool 일 때: sell(주식 팔아 인출) | partial(있는 만큼) | skip
+  events_csv: null        # 목돈 추가/인출 파일 (date,amount)
+
+costs:
+  broker: kis             # 증권사 프리셋: kis(한국투자증권) | none
+  commission_rate: null   # null 이면 프리셋 값(kis 0.25%). 우대율 받으면 예: 0.0009
+  commission_min: null    # 건당 최소 수수료($)
+  commission_per_share: null
+  sec_fee_rate: null      # 미국 SEC 수수료(매도 시만)
+  slippage_bps: 0         # 체결가를 불리하게 (1bp = 0.01%)
+  fx_spread: null         # (참고용) 환전 스프레드
+  fx_rate: 1400           # 세금 계산용 원/달러 환율
+  cash_yield: 0.0         # Pool 이자(연), 예: 0.04
+  tax:
+    enabled: false        # 해외주식 양도세 (연 실현이익 - 250만원) x 22%
+    rate: 0.22
+    deduction_krw: 2500000
+
+fill:
+  price_model: realistic  # limit(지정가 그대로) | realistic(갭 발생 시 시가 체결) | close(종가에서만 판정·체결)
+  same_day_order: sell_first  # 하루에 매수·매도 둘 다 걸릴 때: sell_first | buy_first | skip
+
+report:
+  out_dir: results
+  benchmarks: [TQQQ, QQQ, QLD]   # 같은 입출금 일정으로 단순 보유 비교
+  html: true
