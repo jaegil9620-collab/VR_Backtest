@@ -49,10 +49,10 @@ def run(cfg, log=print):
     for t in cfg["report"].get("benchmarks") or []:
         try:
             log(f"비교 대상 {t} 준비 중...")
-            bp = px if t == dcfg["ticker"] else D.get_prices(dcfg, t)
-            bp = bp[(bp.index >= res["ref_date"]) & (bp.index <= px.index[-1])]
+            full = px if t == dcfg["ticker"] else D.get_prices(dcfg, t)
+            bp = full[(full.index >= res["ref_date"]) & (full.index <= px.index[-1])]
             if bp.empty or bp.index[0] > res["ref_date"] + pd.Timedelta(days=7):
-                raise ValueError("테스트 기간 시작일에 데이터가 없습니다")
+                raise ValueError(f"{t} 데이터는 {full.index[0].date()}부터 있어서 이 기간과 비교할 수 없습니다")
             bench[t], curves[t] = M.buy_and_hold(bp, res["flows"], res["ref_date"])
         except Exception as e:  # 벤치마크 실패는 본 결과에 영향 없음
             bench[t] = {"오류": str(e)}

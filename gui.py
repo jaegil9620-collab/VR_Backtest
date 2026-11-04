@@ -35,7 +35,7 @@ FILLS_R = {v: k for k, v in FILLS.items()}
 RULES = {"한도에 가장 가까운 개수 (책)": "nearest", "한도를 넘지 않게": "floor"}
 RULES_R = {v: k for k, v in RULES.items()}
 FLOW_UNITS = ["$ (고정 금액)", "% (최초 투자금 기준)", "% (현재 계좌총액 기준)"]
-BENCH_CHOICES = ["QQQ", "SPY", "TQQQ", "QLD"]
+BENCH_CHOICES = ["QQQ", "SPY", "TQQQ", "QLD", "BTC-USD"]
 REENTRY = ["N일 이동평균 위로 올라오면", "현금화 후 최저점에서 % 반등하면"]
 
 DEFAULTS = {
@@ -43,7 +43,7 @@ DEFAULTS = {
     "mode": "거치식", "formula": "기본공식", "cycle_length": "10",
     "commission": "0.25", "commission_min": "0", "slippage": "0", "cash_yield": "0",
     "tax": False, "fx_rate": "1400", "fill": FILLS_R["realistic"], "rule": RULES_R["nearest"],
-    "bench": {"QQQ": True, "SPY": True, "TQQQ": True, "QLD": False}, "bench_extra": "",
+    "bench": {"QQQ": True, "SPY": True, "TQQQ": True, "QLD": False, "BTC-USD": True}, "bench_extra": "",
     "safety": False, "stop_pct": "10", "reentry_mode": "N일 이동평균 위로 올라오면", "reentry_val": "200",
 }
 
@@ -128,7 +128,7 @@ class App:
         # --- 비교 대상 ---
         f4 = ttk.LabelFrame(main, text=" 그래프 비교 대상 (그냥 사서 들고 있었을 때) ", padding=8)
         f4.pack(fill="x", pady=(10, 0))
-        sb = saved.get("bench", DEFAULTS["bench"])
+        sb = {**DEFAULTS["bench"], **saved.get("bench", {})}
         for i, t in enumerate(BENCH_CHOICES):
             self.bench[t] = tk.BooleanVar(value=sb.get(t, False))
             ttk.Checkbutton(f4, text=t, variable=self.bench[t]).grid(row=0, column=i, sticky="w", padx=(0, 14))

@@ -64,7 +64,7 @@ fill:
 
 report:
   out_dir: results
-  benchmarks: [QQQ, SPY, TQQQ]   # 같은 입출금 일정으로 단순 보유 비교
+  benchmarks: [QQQ, SPY, TQQQ, BTC-USD]   # 같은 입출금 일정으로 단순 보유 비교
   html: true
 
 safety:                   # 하락 안전장치 (책에 없는 추가 옵션)

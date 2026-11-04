@@ -7,7 +7,7 @@ import pandas as pd
 from .metrics import mdd, twr_index
 from .report import CYCLE_COLS_KO
 
-COLORS = {"VR": "#d62728", "QQQ": "#1f77b4", "SPY": "#2ca02c", "TQQQ": "#9467bd", "QLD": "#8c564b"}
+COLORS = {"VR": "#d62728", "QQQ": "#1f77b4", "SPY": "#2ca02c", "TQQQ": "#9467bd", "QLD": "#8c564b", "BTC-USD": "#f7931a", "ETH-USD": "#627eea"}
 MODE_KO = {"accumulate": "적립식", "hold": "거치식", "withdraw": "인출식"}
 EXTRA = ["#17becf", "#bcbd22", "#e377c2", "#7f7f7f"]
 
