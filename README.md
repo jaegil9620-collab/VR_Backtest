@@ -49,6 +49,12 @@ python cli.py sweep config.yaml --grid strategy.G=5,10,20,30,40,50,100   # 책 P
 | `fill.price_model` | limit(책) / realistic(갭이면 시가 체결) | realistic |
 | `data.synthetic.enabled` | QQQ·^NDX로 3배 상품 흉내(닷컴버블 확인용) | false |
 
+## 코인
+종목에 `BTC-USD`, `ETH-USD`, `SOL-USD` 처럼 Yahoo Finance 코인 티커를 넣으면 됩니다(원화 시세는 `BTC-KRW`, 이때 금액 단위는 원).
+- 주말에도 거래되는 데이터면 자동으로 코인으로 보고, 사이클을 14일로 잡습니다.
+- 소수점 수량으로 사고팝니다. 처음에 약 300~3000 단위가 되도록 0.001개 같은 단위를 자동으로 정합니다.
+- 수수료는 거래소에 맞게 직접 넣으세요(예: 업비트 0.05).
+
 ## 책과 다른 점 / 가정
 - "Pool 사용한도 75% 근처"는 누적 매수액이 한도에 **가장 가까운 개수**로 해석(책 예시 5건과 일치). `pool_limit_rule: floor`로 바꾸면 한도를 절대 넘지 않음.
 - 일봉만 쓰므로 하루 안의 체결 순서는 모릅니다. 매수·매도가 같은 날 모두 걸리면 `same_day_order` 설정을 따르고, 횟수를 결과에 표시합니다.

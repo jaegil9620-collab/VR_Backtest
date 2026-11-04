@@ -96,13 +96,20 @@ def summarize(res):
 
 
 def buy_and_hold(prices, flows, ref_date):
-    """같은 입출금 일정으로 단순 보유했을 때 (소수 주 허용, 비용 없음)."""
+    """같은 입출금 일정으로 단순 보유했을 때 (소수 주 허용, 비용 없음).
+    휴장일(주말 등)의 입출금은 다음 거래일에 넣는다."""
     close = prices["Close"]
     close = close[close.index >= ref_date]
-    f = flows.groupby("date")["amount"].sum()
+    if close.empty:
+        raise ValueError("테스트 기간에 데이터가 없습니다")
+    f = {}
+    for d, a in flows.groupby("date")["amount"].sum().items():
+        i = close.index.searchsorted(pd.Timestamp(d))
+        if i < len(close):
+            f[close.index[i]] = f.get(close.index[i], 0.0) + a
     units, vals = 0.0, []
     for d, px in close.items():
-        if d in f.index:
+        if d in f:
             units = max(units + f[d] / px, 0.0)
         vals.append(units * px)
     total = pd.Series(vals, index=close.index)

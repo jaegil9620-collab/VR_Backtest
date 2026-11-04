@@ -89,6 +89,20 @@ def rescale(ref, body, target=100.0, threshold=10.0):
     return ref * k, body * k, k
 
 
+def is_24_7(df):
+    """주말에도 거래되는 자산(코인)인지: 토·일 데이터가 5% 넘게 있으면 True."""
+    if len(df) < 20:
+        return False
+    return (df.index.dayofweek >= 5).mean() > 0.05
+
+
+def coin_unit(price, cash, target_units=300):
+    """코인을 몇 개 단위로 사고팔지: 처음에 약 300~3000 단위가 되도록 10의 거듭제곱으로 정한다."""
+    import math
+    raw = cash / (price * target_units)
+    return 10 ** math.floor(math.log10(raw)) if raw > 0 else 1.0
+
+
 def slice_period(df, start, end):
     """start 직전 거래일(초기 V 기준일)까지 포함해서 자른다."""
     start, end = pd.Timestamp(start), pd.Timestamp(end)

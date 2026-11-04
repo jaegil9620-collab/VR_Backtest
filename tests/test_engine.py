@@ -84,3 +84,12 @@ def test_safety_stop_and_reentry():
     assert reasons.index("stop") < reasons.index("reentry")
     # 큰 하락을 피했으므로 최저 계좌총액이 안전장치 없을 때보다 높다
     assert res["daily"]["total"].min() > base["daily"]["total"].min()
+
+
+def test_crypto_detect_and_unit():
+    import numpy as np
+    from vr.data import coin_unit, is_24_7
+    idx = pd.date_range("2020-01-01", periods=60, freq="D")
+    assert is_24_7(pd.DataFrame({"Close": np.ones(60)}, index=idx))
+    assert not is_24_7(make_random_walk(60))
+    assert coin_unit(60000, 18000) == pytest.approx(0.001)   # 18000/(60000*300)=0.001

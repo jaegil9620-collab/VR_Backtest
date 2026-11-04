@@ -76,7 +76,7 @@ class App:
         # --- 기본 ---
         f1 = ttk.LabelFrame(main, text=" 기본 ", padding=8)
         f1.pack(fill="x")
-        self.entry(f1, 0, 0, "종목", "ticker", saved, width=10)
+        self.entry(f1, 0, 0, "종목", "ticker", saved, width=10, hint="코인: BTC-USD")
         self.entry(f1, 0, 2, "초기 투자금($)", "initial", saved, width=12)
         self.entry(f1, 1, 0, "시작일", "start", saved, width=12, hint="예: 2011-01-01")
         self.entry(f1, 1, 2, "종료일", "end", saved, width=12, hint="예: 2020-12-31")
