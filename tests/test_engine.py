@@ -66,3 +66,21 @@ def test_rescale_keeps_returns():
     ref, body, k = rescale(px.iloc[:1], px.iloc[1:])
     assert k > 1 and ref["Close"].iloc[0] == pytest.approx(100)
     assert (body["Close"].pct_change().dropna() - px.iloc[1:]["Close"].pct_change().dropna()).abs().max() < 1e-12
+
+
+def test_safety_stop_and_reentry():
+    import numpy as np
+    idx = pd.bdate_range("2020-01-01", periods=80)
+    # 40일 동안 100 → 30으로 하락 후 40일 동안 30 → 90으로 회복
+    close = np.concatenate([np.linspace(100, 30, 40), np.linspace(30, 90, 40)])
+    px = pd.DataFrame({"Open": close, "High": close * 1.001, "Low": close * 0.999, "Close": close}, index=idx)
+    base = backtest(px, _cfg(mode="hold", costs__broker="none"))
+    cfg = _cfg(mode="hold", costs__broker="none", safety__enabled=True, safety__stop_pct=0.10,
+               safety__reentry_mode="rebound", safety__reentry_pct=0.20)
+    res = backtest(px, cfg)
+    st = res["state"]
+    assert st.stops >= 1 and st.reentries >= 1
+    reasons = list(res["trades"]["reason"])
+    assert reasons.index("stop") < reasons.index("reentry")
+    # 큰 하락을 피했으므로 최저 계좌총액이 안전장치 없을 때보다 높다
+    assert res["daily"]["total"].min() > base["daily"]["total"].min()

@@ -89,6 +89,9 @@ def summarize(res):
         "세금 합계": round(st.taxes, 2),
         "같은 날 매수·매도 충돌": int(cycles["same_day_conflicts"].sum()),
         "Pool 최저": round(float(daily["pool"].min()), 2),
+        "안전장치 발동(전량 매도)": st.stops,
+        "재진입": st.reentries,
+        "현금화 상태로 보낸 날": int(daily["in_cash"].sum()) if "in_cash" in daily else 0,
     }
 
 

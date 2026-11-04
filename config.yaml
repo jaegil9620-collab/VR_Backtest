@@ -66,3 +66,11 @@ report:
   out_dir: results
   benchmarks: [QQQ, SPY, TQQQ]   # 같은 입출금 일정으로 단순 보유 비교
   html: true
+
+safety:                   # 하락 안전장치 (책에 없는 추가 옵션)
+  enabled: false          # true 로 켜기
+  stop_pct: 0.15          # 평가금이 최소밴드보다 15% 더 내려가면(종가 기준) 전량 매도 → 현금 보유
+  reentry_mode: rebound   # rebound: 현금화 후 최저 종가에서 reentry_pct 만큼 오르면 재진입 | ma: 종가가 N일 이동평균 위로 올라오면
+  reentry_pct: 0.20
+  reentry_ma: 200
+  reentry_pool_ratio: null  # 재진입 때 현금으로 남길 비율 (null = 방식별 책 시작 Pool 비율)

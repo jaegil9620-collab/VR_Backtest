@@ -116,6 +116,21 @@ def build(res, summary, cfg, bench, curves, path):
     f3.add_trace(go.Scatter(x=d.index, y=d["max_band"], name="최대밴드", line=dict(color="#2ca02c", dash="dot", shape="hv")))
     f3.add_trace(go.Scatter(x=d.index, y=d["min_band"], name="최소밴드", line=dict(color="#2ca02c", dash="dot", shape="hv")))
     f3.add_trace(go.Scatter(x=d.index, y=d["pool"], name="Pool", line=dict(color="#1f77b4")))
+    if cfg.get("safety", {}).get("enabled"):
+        if "stop_line" in d:
+            f3.add_trace(go.Scatter(x=d.index, y=d["stop_line"], name="안전장치 매도선",
+                                    line=dict(color="#555", dash="dash", width=1, shape="hv")))
+        trd = res["trades"]
+        for reason, label, sym, col in (("stop", "안전장치 전량 매도", "triangle-down", "#000"),
+                                        ("reentry", "재진입", "triangle-up", "#2ca02c")):
+            m = trd[trd["reason"] == reason] if len(trd) else trd
+            if len(m):
+                dts = pd.to_datetime(m["date"])
+                f3.add_trace(go.Scatter(x=dts, y=d["total"].reindex(dts).values, mode="markers", name=label,
+                                        marker=dict(symbol=sym, size=11, color=col)))
+                for dt in dts:
+                    f1.add_vline(x=dt, line_width=1, line_dash="dot",
+                                 line_color="#999" if reason == "stop" else "#9c9")
     f3.update_layout(title="VR 진행 모습 (평가금 · V · 밴드 · Pool)", hovermode="x unified",
                      template="plotly_white", height=460, legend=dict(orientation="h", y=-0.15))
     figs.append(f3)
@@ -166,6 +181,13 @@ def build(res, summary, cfg, bench, curves, path):
         ("체결 방식", {"realistic": "지정가 (갭이면 시가)", "limit": "지정가 그대로", "close": "종가 기준"}[cfg["fill"]["price_model"]], ""),
         ("양도세", "반영" if k["tax"]["enabled"] else "미반영", ""),
     ]
+    sf = cfg.get("safety") or {}
+    if sf.get("enabled"):
+        re_txt = (f"{sf['reentry_ma']}일 이동평균 위로 올라오면" if sf.get("reentry_mode") == "ma"
+                  else f"현금화 후 최저 종가에서 {sf['reentry_pct']*100:g}% 오르면")
+        settings.append(("하락 안전장치", f"최소밴드보다 {sf['stop_pct']*100:g}% 더 내려가면 전량 매도, {re_txt} 재진입", "추가 옵션"))
+    else:
+        settings.append(("하락 안전장치", "끔", ""))
     set_rows = "".join(f"<tr><td>{html.escape(a)}</td><td>{html.escape(str(b))}</td><td class='src'>{html.escape(cs)}</td></tr>"
                        for a, b, cs in settings)
 
@@ -177,6 +199,9 @@ def build(res, summary, cfg, bench, curves, path):
              ("매수 / 매도 체결", f"{summary['매수 체결 수']} / {summary['매도 체결 수']}"),
              ("수수료 + 세금", _fmt(summary["수수료 합계"] + summary["세금 합계"], "usd")),
              ("최종 Pool", _fmt(summary["최종 Pool"], "usd"))]
+    if (cfg.get("safety") or {}).get("enabled"):
+        cards.append(("안전장치 발동 / 재진입", f"{summary['안전장치 발동(전량 매도)']} / {summary['재진입']}"))
+        cards.append(("현금화로 보낸 날", f"{summary['현금화 상태로 보낸 날']}일"))
     card_html = "".join(f'<div class="card"><div class="k">{a}</div><div class="v">{b}</div></div>' for a, b in cards)
 
     warns = list(cfg["_warnings"])
@@ -194,6 +219,7 @@ def build(res, summary, cfg, bench, curves, path):
         tr = tr.rename(columns={"date": "날짜", "side": "구분", "qty": "수량", "price": "가격", "amount": "금액",
                                 "fee": "수수료", "pool_after": "체결 후 Pool", "shares_after": "체결 후 보유수", "reason": "사유"})
         tr["구분"] = tr["구분"].map({"buy": "매수", "sell": "매도"})
+        tr["사유"] = tr["사유"].replace({"stop": "안전장치 전량 매도", "reentry": "재진입", "initial": "최초 매수"})
 
     title = f"{ticker} VR 백테스트"
     doc = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">

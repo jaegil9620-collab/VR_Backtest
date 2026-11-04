@@ -36,6 +36,7 @@ RULES = {"한도에 가장 가까운 개수 (책)": "nearest", "한도를 넘지
 RULES_R = {v: k for k, v in RULES.items()}
 FLOW_UNITS = ["$ (고정 금액)", "% (최초 투자금 기준)", "% (현재 계좌총액 기준)"]
 BENCH_CHOICES = ["QQQ", "SPY", "TQQQ", "QLD"]
+REENTRY = ["N일 이동평균 위로 올라오면", "현금화 후 최저점에서 % 반등하면"]
 
 DEFAULTS = {
     "ticker": "TQQQ", "start": "2011-01-01", "end": "2020-12-31", "initial": "20000", "refresh": False,
@@ -43,6 +44,7 @@ DEFAULTS = {
     "commission": "0.25", "commission_min": "0", "slippage": "0", "cash_yield": "0",
     "tax": False, "fx_rate": "1400", "fill": FILLS_R["realistic"], "rule": RULES_R["nearest"],
     "bench": {"QQQ": True, "SPY": True, "TQQQ": True, "QLD": False}, "bench_extra": "",
+    "safety": False, "stop_pct": "10", "reentry_mode": "N일 이동평균 위로 올라오면", "reentry_val": "200",
 }
 
 
@@ -61,7 +63,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("VR 백테스터 (라오어 밸류 리밸런싱)")
-        root.geometry("760x780")
+        root.geometry("780x900")
         root.minsize(700, 700)
         self.v = {}
         self.bench = {}
@@ -111,6 +113,17 @@ class App:
         self.v["tax"] = tk.BooleanVar(value=saved.get("tax", False))
         ttk.Checkbutton(f3, text="양도세 반영 (연 250만원 공제 후 22%)", variable=self.v["tax"]).grid(row=3, column=0, columnspan=2, sticky="w")
         self.entry(f3, 3, 2, "환율(원/$)", "fx_rate", saved, width=8)
+
+        # --- 하락 안전장치 ---
+        f6 = ttk.LabelFrame(main, text=" 하락 안전장치 (책에 없는 추가 옵션) ", padding=8)
+        f6.pack(fill="x", pady=(10, 0))
+        self.v["safety"] = tk.BooleanVar(value=saved.get("safety", False))
+        ttk.Checkbutton(f6, text="켜기", variable=self.v["safety"]).grid(row=0, column=0, sticky="w")
+        self.entry(f6, 0, 1, "최소밴드보다 % 더 내려가면 전량 매도", "stop_pct", saved, width=6)
+        self.combo(f6, 1, 0, "재진입", "reentry_mode", REENTRY, saved, width=30, span=2)
+        self.entry(f6, 1, 3, "값", "reentry_val", saved, width=6)
+        ttk.Label(f6, text="재진입 값: 반등이면 %, 이동평균이면 일수 (예: 30 / 200)", foreground="#888").grid(
+            row=2, column=0, columnspan=5, sticky="w")
 
         # --- 비교 대상 ---
         f4 = ttk.LabelFrame(main, text=" 그래프 비교 대상 (그냥 사서 들고 있었을 때) ", padding=8)
@@ -223,6 +236,11 @@ class App:
                       "fx_rate": self.num("fx_rate", "환율"),
                       "tax": {"enabled": bool(self.v["tax"].get()), "rate": 0.22, "deduction_krw": 2500000}},
             "fill": {"price_model": FILLS[self.v["fill"].get()]},
+            "safety": {"enabled": bool(self.v["safety"].get()),
+                       "stop_pct": self.num("stop_pct", "안전장치 %") / 100,
+                       "reentry_mode": "ma" if self.v["reentry_mode"].get() == REENTRY[0] else "rebound",
+                       "reentry_ma": int(self.num("reentry_val", "재진입 값")),
+                       "reentry_pct": self.num("reentry_val", "재진입 값") / 100},
             "report": {"out_dir": os.path.join(BASE, "results"), "benchmarks": list(dict.fromkeys(benches)), "html": True},
         }
         if cfg["capital"]["initial"] <= 0:

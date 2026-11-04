@@ -48,6 +48,8 @@ DEFAULTS = {
               "fx_spread": None, "fx_rate": 1400.0, "cash_yield": 0.0,
               "tax": {"enabled": False, "rate": 0.22, "deduction_krw": 2500000}},
     "fill": {"price_model": "realistic", "same_day_order": "sell_first"},
+    "safety": {"enabled": False, "stop_pct": 0.15, "reentry_mode": "rebound",
+               "reentry_pct": 0.20, "reentry_ma": 200, "reentry_pool_ratio": None},
     "report": {"out_dir": "results", "benchmarks": ["TQQQ", "QQQ", "QLD"], "html": True},
 }
 

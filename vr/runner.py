@@ -10,6 +10,10 @@ def run(cfg, log=print):
     dcfg = cfg["data"]
     log(f"{dcfg['ticker']} 가격 데이터 준비 중...")
     prices = D.get_prices(dcfg)
+    sf = cfg.get("safety") or {}
+    if sf.get("enabled") and sf.get("reentry_mode") == "ma":
+        # 이동평균은 시작일 이전 데이터까지 써서 미리 계산
+        prices = prices.assign(MA=prices["Close"].rolling(int(sf.get("reentry_ma", 200)), min_periods=1).mean())
     ref, body = D.slice_period(prices, dcfg["start"], dcfg["end"])
     scale = 1.0
     if dcfg.get("rescale", "auto") == "auto":

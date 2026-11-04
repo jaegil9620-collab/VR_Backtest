@@ -23,6 +23,10 @@ class State:
     realized: dict = field(default_factory=dict)   # 연도별 실현손익(USD)
     fees: float = 0.0
     taxes: float = 0.0
+    in_cash: bool = False            # 안전장치로 전량 현금화된 상태
+    low_since_exit: float = 0.0
+    stops: int = 0
+    reentries: int = 0
 
 
 @dataclass
@@ -38,6 +42,13 @@ class Params:
     price_model: str = "realistic"     # limit | realistic
     same_day_order: str = "sell_first"  # sell_first | buy_first | skip
     cash_yield: float = 0.0
+    # 하락 안전장치 (책에 없는 추가 옵션)
+    stop_enabled: bool = False
+    stop_pct: float = 0.15           # 평가금이 최소밴드보다 이만큼 더 내려가면(종가 기준) 전량 매도
+    reentry_mode: str = "rebound"    # rebound(현금화 후 최저 종가 대비 반등) | ma(이동평균 위로)
+    reentry_pct: float = 0.20
+    reentry_ma: int = 200
+    reentry_pool_ratio: float = 0.10  # 재진입 시 현금으로 남길 비율
 
 
 def _trade(state, date, side, qty, price, cm, trades, reason):
@@ -62,14 +73,30 @@ def _trade(state, date, side, qty, price, cm, trades, reason):
                    "shares_after": state.shares, "reason": reason})
 
 
+def _reenter(state, date, close, p, cm, trades):
+    total = state.pool
+    cash = total * (1 - p.reentry_pool_ratio)
+    qty = int(cash // (close * (1 + cm.rate + cm.slip)))
+    while qty > 0 and qty * close + cm.fee("buy", close, qty) > cash:
+        qty -= 1
+    if qty > 0:
+        _trade(state, date, "buy", qty, cm.slipped("buy", close), cm, trades, "reentry")
+    state.V = rnd(state.shares * close, p.digits)
+    state.in_cash = False
+    state.reentries += 1
+
+
 def run_cycle(state, bars, p, cm, cycle_no=0, trades=None, daily=None):
     """사이클 하나를 진행한다. state 를 직접 바꾸고 정리표 한 줄(dict)을 돌려준다."""
     trades = [] if trades is None else trades
     shares0, pool0 = state.shares, state.pool
     lo_band, hi_band = bands(state.V, p.band_low, p.band_high, p.digits)
     fee_fn = cm.fee
-    buys = buy_ladder(lo_band, shares0, pool0, p.pool_limit, p.pool_limit_rule, p.lot, p.digits, fee_fn)
-    sells = sell_ladder(hi_band, shares0, p.lot, p.digits)
+    if state.in_cash:
+        buys, sells = [], []
+    else:
+        buys = buy_ladder(lo_band, shares0, pool0, p.pool_limit, p.pool_limit_rule, p.lot, p.digits, fee_fn)
+        sells = sell_ladder(hi_band, shares0, p.lot, p.digits)
     planned_buy = sum(o.price * o.qty for o in buys)
     planned_n = len(buys)
     start_eval = None
@@ -80,7 +107,7 @@ def run_cycle(state, bars, p, cm, cycle_no=0, trades=None, daily=None):
             start_eval = shares0 * bar["Open"]
         if p.cash_yield and state.pool > 0:
             state.pool *= (1 + p.cash_yield) ** (1 / 252)
-        if first and shares0 == 0 and state.pool > 0 and p.pool_limit > 0:
+        if first and shares0 == 0 and not state.in_cash and state.pool > 0 and p.pool_limit > 0:
             # 보유 0주이면 사다리 기준가가 없으므로 첫날 시가에 사용한도만큼 매수 (책에 없는 경우)
             budget = min(lo_band, state.pool * p.pool_limit)
             qty = int(budget // (bar["Open"] * p.lot)) * p.lot
@@ -111,11 +138,31 @@ def run_cycle(state, bars, p, cm, cycle_no=0, trades=None, daily=None):
                     px = cm.slipped("sell", px)
                     sells.remove(o)
                 _trade(state, date, side, o.qty, px, cm, trades, f"ladder#{o.step}")
+        stop_line = lo_band * (1 - p.stop_pct)
+        if p.stop_enabled:
+            close = bar["Close"]
+            if state.in_cash:
+                state.low_since_exit = min(state.low_since_exit, close)
+                if p.reentry_mode == "ma":
+                    ma = bar.get("MA", float("nan"))
+                    ok = ma == ma and close > ma
+                else:
+                    ok = close >= state.low_since_exit * (1 + p.reentry_pct)
+                if ok:
+                    _reenter(state, date, close, p, cm, trades)
+                    lo_band, hi_band = bands(state.V, p.band_low, p.band_high, p.digits)
+            elif state.shares > 0 and state.shares * close < stop_line:
+                _trade(state, date, "sell", state.shares, cm.slipped("sell", close), cm, trades, "stop")
+                buys, sells = [], []
+                state.in_cash = True
+                state.low_since_exit = close
+                state.stops += 1
         if daily is not None:
             daily.append({"date": date, "close": bar["Close"], "shares": state.shares,
                           "pool": state.pool, "eval": state.shares * bar["Close"],
                           "total": state.shares * bar["Close"] + state.pool,
-                          "V": state.V, "min_band": lo_band, "max_band": hi_band, "cycle": cycle_no})
+                          "V": state.V, "min_band": lo_band, "max_band": hi_band, "cycle": cycle_no,
+                          "stop_line": stop_line if p.stop_enabled else None, "in_cash": state.in_cash})
     last = bars.iloc[-1]
     E = state.shares * last["Close"]
     n_buy = sum(1 for t in trades if t["date"] >= bars.index[0] and t["side"] == "buy")
@@ -211,6 +258,21 @@ def backtest(prices, cfg, events=None):
                formula=s["formula"], lot=s["lot_size"], digits=s["round_digits"],
                price_model=f["price_model"], same_day_order=f["same_day_order"],
                cash_yield=k["cash_yield"])
+    sf = cfg.get("safety") or {}
+    if sf.get("enabled"):
+        p.stop_enabled = True
+        p.stop_pct = float(sf.get("stop_pct", 0.15))
+        p.reentry_mode = sf.get("reentry_mode", "rebound")
+        p.reentry_pct = float(sf.get("reentry_pct", 0.20))
+        p.reentry_ma = int(sf.get("reentry_ma", 200))
+        rpr = sf.get("reentry_pool_ratio")
+        p.reentry_pool_ratio = float(c["initial_pool_ratio"] if rpr is None else rpr)
+        if p.reentry_mode == "ma":
+            ma = prices["Close"].rolling(p.reentry_ma, min_periods=1).mean()
+            if "MA" in prices.columns:
+                ma = prices["MA"]
+            prices = prices.assign(MA=ma)
+            ref, body = prices.iloc[:1], prices.iloc[1:]
     trades, daily, cycles, flows = [], [], [], []
     ref_date, P0 = ref.index[0], ref["Close"].iloc[0]
     initial = float(c["initial"])
@@ -267,11 +329,12 @@ def backtest(prices, cfg, events=None):
                     _sell_to_cover(state, end_date, close, -flow - state.pool, cm, trades, "withdraw")
                 if state.pool < -actual:   # 다 팔아도 부족하면 남은 만큼만
                     actual = -max(state.pool, 0.0)
-            state.V = next_v(state.V, pool_for_v, p.G, actual, p.formula, E, s["round_digits"])
+            if not state.in_cash:   # 현금화 상태에서는 V를 멈춰 둔다
+                state.V = next_v(state.V, pool_for_v, p.G, actual, p.formula, E, s["round_digits"])
             state.pool += actual
             if actual:
                 flows.append({"date": end_date, "amount": actual, "kind": "periodic"})
-        row.update({"G": p.G, "E": round(E, 2), "flow": actual if not is_last else 0.0,
+        row.update({"in_cash": state.in_cash, "G": p.G, "E": round(E, 2), "flow": actual if not is_last else 0.0,
                     "event": round(ev_amt, 2), "tax": tax, "next_V": state.V if not is_last else None,
                     "pool_after_flow": round(state.pool, 2), "fees_cum": round(state.fees, 2)})
         cycles.append(row)
