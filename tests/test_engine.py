@@ -93,3 +93,18 @@ def test_crypto_detect_and_unit():
     assert is_24_7(pd.DataFrame({"Close": np.ones(60)}, index=idx))
     assert not is_24_7(make_random_walk(60))
     assert coin_unit(60000, 18000) == pytest.approx(0.001)   # 18000/(60000*300)=0.001
+
+
+def test_strategy_save_load(tmp_path):
+    from vr import config as C
+    from vr import strategies as ST
+    cfg = C.resolve({"data": {"ticker": "TQQQ", "cache_dir": "x", "refresh": True}})
+    ST.save("내 전략", cfg, {"CAGR": 10.0, "MDD(계좌총액)": -20.0, "기타": 1}, "메모", folder=str(tmp_path))
+    it = ST.list_all(folder=str(tmp_path))[0]
+    assert it["name"] == "내_전략" and ST.pick(it["result"], "MDD") == -20.0 and "기타" not in it["result"]
+    doc = ST.load("내 전략", folder=str(tmp_path))
+    assert "cache_dir" not in doc["config"]["data"] and "report" not in doc["config"]
+    c2 = ST.load_config("내 전략", {"data.ticker": "SOXL"}, folder=str(tmp_path))
+    assert c2["data"]["ticker"] == "SOXL"
+    ST.delete("내 전략", folder=str(tmp_path))
+    assert ST.list_all(folder=str(tmp_path)) == []

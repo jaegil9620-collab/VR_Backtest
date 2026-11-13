@@ -1,0 +1,76 @@
+name: VR_TQQQ_G10
+memo: 책 거치식 G10
+saved_at: 2026-11-13 02:26
+program: vr
+result:
+  기간: 2019-12-31 ~ 2026-11-04 (6.84년)
+  사이클 수: 172
+  최종 계좌총액: 133965.47
+  최종 평가금(주식): 122799.52
+  최종 Pool: 11165.95
+  최종 V: 137623.53
+  CAGR(시간가중): 31.24
+  MDD(시간가중): -79.93
+  MDD(계좌총액): -79.93
+  MDD(사이클 종료일 기준): -77.41
+  수수료 합계: 643.5
+config:
+  data:
+    ticker: TQQQ
+    source: yfinance
+    start: '2020-01-01'
+    end: null
+    synthetic:
+      enabled: false
+      base_ticker: QQQ
+      leverage: 3
+      expense_ratio: 0.0095
+      financing_rate: 0.0
+    rescale: auto
+  strategy:
+    mode: hold
+    formula: basic
+    G: 10
+    G_schedule: null
+    band_low: 0.15
+    band_high: 0.15
+    pool_limit: 0.5
+    pool_limit_rule: nearest
+    cycle_mode: trading_days
+    cycle_length: 10
+    lot_size: 1
+    round_digits: 2
+  capital:
+    initial: 20000
+    initial_pool_ratio: 0.1
+    periodic:
+      type: fixed
+      amount: 0.0
+      ratio: null
+      ratio_base: initial
+    withdraw_shortfall: sell
+    events_csv: null
+  costs:
+    broker: kis
+    commission_rate: 0.0025
+    commission_min: 0.0
+    commission_per_share: 0.0
+    sec_fee_rate: 2.78e-05
+    slippage_bps: 0
+    fx_spread: 0.0
+    fx_rate: 1400
+    cash_yield: 0.0
+    tax:
+      enabled: false
+      rate: 0.22
+      deduction_krw: 2500000
+  fill:
+    price_model: realistic
+    same_day_order: sell_first
+  safety:
+    enabled: false
+    stop_pct: 0.15
+    reentry_mode: rebound
+    reentry_pct: 0.2
+    reentry_ma: 200
+    reentry_pool_ratio: null

@@ -78,3 +78,14 @@ vr/metrics.py  CAGR, MDD, 시간가중·금액가중 수익률, 단순보유 비
 vr/report.py   CSV·요약·그래프 저장
 cli.py         run / sweep / fetch
 ```
+
+## 전략 저장 · 불러오기
+화면 맨 위 **저장된 전략** 칸에서 [지금 설정 저장] (이름·메모 입력, 백테스트 결과도 같이 저장) / [불러오기] / [삭제].
+`strategies\이름.yaml` 로 저장되고, **포트폴리오 백테스터**(`C:\Workspace\portfolio_backtest`)에서 여러 전략을 섞을 때 이 파일을 씁니다.
+```
+python cli.py save 이름 config.yaml --set ... --memo "메모"
+python cli.py list
+python cli.py run --strategy 이름
+python cli.py delete 이름
+```
+종료일(`data.end`)을 비우면 마지막 데이터 날까지 계산합니다.
