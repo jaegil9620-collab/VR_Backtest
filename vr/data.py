@@ -105,7 +105,8 @@ def coin_unit(price, cash, target_units=300):
 
 def slice_period(df, start, end):
     """start 직전 거래일(초기 V 기준일)까지 포함해서 자른다."""
-    start, end = pd.Timestamp(start), pd.Timestamp(end)
+    start = pd.Timestamp(start)
+    end = pd.Timestamp(end) if end else df.index[-1]   # 종료일 비우면 마지막 날까지
     before = df[df.index < start]
     body = df[(df.index >= start) & (df.index <= end)]
     if body.empty:

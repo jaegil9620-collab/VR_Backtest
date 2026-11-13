@@ -10,7 +10,7 @@ import traceback
 import webbrowser
 from datetime import datetime
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 
 
 def base_dir():
@@ -25,6 +25,7 @@ sys.path.insert(0, BASE)
 
 from vr import config as C          # noqa: E402
 from vr import report as R          # noqa: E402
+from vr import strategies as ST     # noqa: E402
 from vr.runner import run           # noqa: E402
 
 SETTINGS_FILE = os.path.join(BASE, "gui_settings.json")
@@ -63,7 +64,7 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title("VR 백테스터 (라오어 밸류 리밸런싱)")
-        root.geometry("780x900")
+        root.geometry(f"780x{min(970, root.winfo_screenheight() - 80)}")
         root.minsize(700, 700)
         self.v = {}
         self.bench = {}
@@ -72,6 +73,19 @@ class App:
 
         main = ttk.Frame(root, padding=12)
         main.pack(fill="both", expand=True)
+
+        f0 = ttk.LabelFrame(main, text=" 저장된 전략 ", padding=8)
+        f0.pack(fill="x", pady=(0, 10))
+        self.strat = tk.StringVar()
+        self.strat_box = ttk.Combobox(f0, textvariable=self.strat, state="readonly", width=34)
+        self.strat_box.grid(row=0, column=0, sticky="w")
+        self.strat_box.bind("<<ComboboxSelected>>", lambda e: self.show_strategy())
+        ttk.Button(f0, text="불러오기", command=self.load_strategy).grid(row=0, column=1, padx=(8, 0))
+        ttk.Button(f0, text="지금 설정 저장", command=self.save_strategy).grid(row=0, column=2, padx=(8, 0))
+        ttk.Button(f0, text="삭제", command=self.delete_strategy).grid(row=0, column=3, padx=(8, 0))
+        self.strat_info = ttk.Label(f0, text="", foreground="#666")
+        self.strat_info.grid(row=1, column=0, columnspan=4, sticky="w", pady=(4, 0))
+        self.strat_items = {}
 
         # --- 기본 ---
         f1 = ttk.LabelFrame(main, text=" 기본 ", padding=8)
@@ -149,6 +163,7 @@ class App:
         self.log = tk.Text(main, height=9, wrap="word", state="disabled", background="#f7f7f7")
         self.log.pack(fill="both", expand=True, pady=(10, 0))
         self.write("설정을 고른 뒤 [테스트 실행]을 누르세요. 결과는 브라우저에 열립니다.")
+        self.refresh_strategies()
         self.on_mode(initial=True, saved=saved)
 
     # ---------- 위젯 도우미 ----------
@@ -303,9 +318,105 @@ class App:
         except Exception:
             return dict(DEFAULTS)
 
-    def save_settings(self):
+    # ---------- 저장된 전략 (포트폴리오 백테스터·자동매매에서 불러 씀) ----------
+    def refresh_strategies(self, select=None):
+        self.strat_items = {it["name"]: it for it in ST.list_all()}
+        names = list(self.strat_items)
+        self.strat_box.configure(values=names)
+        if select in self.strat_items:
+            self.strat.set(select)
+        elif self.strat.get() not in self.strat_items:
+            self.strat.set(names[0] if names else "")
+        self.show_strategy()
+
+    def show_strategy(self):
+        it = self.strat_items.get(self.strat.get())
+        if not it:
+            self.strat_info.configure(text="저장된 전략이 없습니다. 설정을 고른 뒤 [지금 설정 저장]을 누르세요.")
+            return
+        r_ = it["result"]
+        c, m = ST.pick(r_, "CAGR"), ST.pick(r_, "MDD")
+        res = f"CAGR {c}%, MDD {m}% ({r_.get('기간', '')})" if c is not None else "결과 없음"
+        memo = f"  메모: {it['memo']}" if it["memo"] else ""
+        self.strat_info.configure(text=f"[{it['ticker']}] {res}  저장 {it['saved_at']}{memo}")
+
+    def load_strategy(self):
+        name = self.strat.get()
+        if not name:
+            return
+        try:
+            ui = ST.load(name).get("ui")
+        except Exception as e:
+            messagebox.showerror("불러오기", str(e))
+            return
+        if not ui:
+            messagebox.showinfo("불러오기", "명령어로 저장한 전략이라 화면 입력값이 없습니다.\n"
+                                "명령어(python cli.py run --strategy 이름)나 포트폴리오 백테스터에서는 그대로 쓸 수 있어요.")
+            return
+        for key, val in ui.items():
+            if key == "bench":
+                for t, b in val.items():
+                    if t in self.bench:
+                        self.bench[t].set(bool(b))
+            elif key in self.v:
+                self.v[key].set(val if isinstance(self.v[key], tk.BooleanVar) else str(val))
+        self.write(f"전략 불러옴: {name}")
+
+    def save_strategy(self):
+        try:
+            cfg = self.build_cfg()
+        except Exception as e:
+            messagebox.showerror("설정 확인", str(e))
+            return
+        name = simpledialog.askstring("전략 저장", "전략 이름 (예: TQQQ_G10)", parent=self.root,
+                                      initialvalue=self.strat.get() or cfg["data"]["ticker"])
+        if not name:
+            return
+        try:
+            name = ST.safe_name(name)
+        except ValueError as e:
+            messagebox.showerror("전략 저장", str(e))
+            return
+        if name in self.strat_items and not messagebox.askyesno("전략 저장", f"'{name}' 이 이미 있습니다. 덮어쓸까요?"):
+            return
+        old = (self.strat_items.get(name) or {}).get("memo", "")
+        memo = simpledialog.askstring("전략 저장", "메모 (선택)", parent=self.root, initialvalue=old)
+        ui = self.ui_values()
+        self.write(f"전략 저장 중: {name} (백테스트 결과도 함께 저장)...")
+
+        def work():
+            summary = None
+            try:
+                c2 = dict(cfg, report=dict(cfg["report"], benchmarks=[]))
+                _, summary, _, _ = run(c2, log=lambda m: None)
+            except Exception as e:
+                self.write(f"  백테스트 실패 - 설정만 저장합니다: {e}")
+            try:
+                p = ST.save(name, cfg, summary, memo or "", ui=ui)
+                msg = f"저장 완료: {p}"
+                if summary:
+                    msg += f"  (CAGR {ST.pick(summary, 'CAGR')}%, MDD {ST.pick(summary, 'MDD')}%)"
+                self.write(msg)
+                self.root.after(0, lambda: self.refresh_strategies(select=name))
+            except Exception as e:
+                self.write(f"저장 실패: {e}")
+        threading.Thread(target=work, daemon=True).start()
+
+    def delete_strategy(self):
+        name = self.strat.get()
+        if name and messagebox.askyesno("전략 삭제", f"'{name}' 을 삭제할까요?"):
+            ST.delete(name)
+            self.write(f"전략 삭제: {name}")
+            self.strat.set("")
+            self.refresh_strategies()
+
+    def ui_values(self):
         data = {k: (v.get() if not isinstance(v, tk.BooleanVar) else bool(v.get())) for k, v in self.v.items()}
         data["bench"] = {t: bool(b.get()) for t, b in self.bench.items()}
+        return data
+
+    def save_settings(self):
+        data = self.ui_values()
         try:
             with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=1)
